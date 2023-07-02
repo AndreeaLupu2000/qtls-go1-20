@@ -46,6 +46,13 @@ func (c *Conn) serverHandshake(ctx context.Context) error {
 		return err
 	}
 
+	// Check if the user chooses a cipher suite and the server doesn't support this cipher suite -> panic
+	/*if len(c.config.CipherSuites) != 0 {
+		if c.config.CipherSuites[0] != clientHello.cipherSuites[0] {
+			panic("The server and client don't have the same cipher suites list")
+		}
+	}*/
+
 	if c.vers == VersionTLS13 {
 		hs := serverHandshakeStateTLS13{
 			c:           c,
@@ -368,7 +375,7 @@ func (hs *serverHandshakeState) pickCipherSuite() error {
 	c := hs.c
 
 	preferenceOrder := cipherSuitesPreferenceOrder
-	if !hasAESGCMHardwareSupport || !aesgcmPreferred(hs.clientHello.cipherSuites) {
+	if !HasAESGCMHardwareSupport || !aesgcmPreferred(hs.clientHello.cipherSuites) {
 		preferenceOrder = cipherSuitesPreferenceOrderNoAES
 	}
 

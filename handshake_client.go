@@ -13,6 +13,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rsa"
 	"crypto/subtle"
+	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"fmt"
@@ -100,22 +101,34 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, *ecdh.PrivateKey, error) {
 		hello.secureRenegotiation = c.clientFinished[:]
 	}
 
-	preferenceOrder := cipherSuitesPreferenceOrder
-	if !hasAESGCMHardwareSupport {
-		preferenceOrder = cipherSuitesPreferenceOrderNoAES
+	var preferenceOrder []uint16
+	// Check if no option for cipher suite has been choosen -> the implementation should take the default cipher suites list
+	if len(config.cipherSuites()) == 0 {
+		preferenceOrder = cipherSuitesPreferenceOrder
+		if !HasAESGCMHardwareSupport {
+			preferenceOrder = cipherSuitesPreferenceOrderNoAES
+		}
 	}
 	configCipherSuites := config.cipherSuites()
 	hello.cipherSuites = make([]uint16, 0, len(configCipherSuites))
 
 	for _, suiteId := range preferenceOrder {
-		suite := mutualCipherSuite(configCipherSuites, suiteId)
-		if suite == nil {
-			continue
-		}
-		// Don't advertise TLS 1.2-only cipher suites unless
-		// we're attempting TLS 1.2.
-		if hello.vers < VersionTLS12 && suite.flags&suiteTLS12 != 0 {
-			continue
+		// checking if TLS 1.3 cipher suites are used or not
+		if suiteId == tls.TLS_CHACHA20_POLY1305_SHA256 || suiteId == tls.TLS_AES_128_GCM_SHA256 || suiteId == tls.TLS_AES_256_GCM_SHA384 {
+			var suite = mutualCipherSuiteTLS13(configCipherSuites, suiteId)
+			if suite == nil {
+				continue
+			}
+		} else {
+			suite := mutualCipherSuite(configCipherSuites, suiteId)
+			if suite == nil {
+				continue
+			}
+			// Don't advertise TLS 1.2-only cipher suites unless
+			// we're attempting TLS 1.2.
+			if hello.vers < VersionTLS12 && suite.flags&suiteTLS12 != 0 {
+				continue
+			}
 		}
 		hello.cipherSuites = append(hello.cipherSuites, suiteId)
 	}
@@ -143,26 +156,48 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, *ecdh.PrivateKey, error) {
 	}
 
 	var key *ecdh.PrivateKey
-	if hello.supportedVersions[0] == VersionTLS13 {
-		if len(hello.supportedVersions) == 1 {
-			hello.cipherSuites = hello.cipherSuites[:0]
-		}
-		if hasAESGCMHardwareSupport {
-			hello.cipherSuites = append(hello.cipherSuites, defaultCipherSuitesTLS13...)
+	// I added if len(configCipherSuites) to check if any input regarding the cipher suites was given or not
+	// if so this will be using the given one of the defaults
+	if len(configCipherSuites) == 0 {
+		if hello.supportedVersions[0] == VersionTLS13 {
+			if len(hello.supportedVersions) == 1 {
+				hello.cipherSuites = hello.cipherSuites[:0]
+			}
+			if HasAESGCMHardwareSupport {
+				hello.cipherSuites = append(hello.cipherSuites, defaultCipherSuitesTLS13...)
+			} else {
+				hello.cipherSuites = append(hello.cipherSuites, defaultCipherSuitesTLS13NoAES...)
+			}
 		} else {
-			hello.cipherSuites = append(hello.cipherSuites, defaultCipherSuitesTLS13NoAES...)
+			if !HasAESGCMHardwareSupport {
+				hello.cipherSuites = append(hello.cipherSuites, cipherSuitesPreferenceOrderNoAES...)
+			} else {
+				hello.cipherSuites = append(hello.cipherSuites, cipherSuitesPreferenceOrder...)
+			}
 		}
 
-		curveID := config.curvePreferences()[0]
-		if _, ok := curveForCurveID(curveID); !ok {
-			return nil, nil, errors.New("tls: CurvePreferences includes unsupported curve")
+	} else if len(configCipherSuites) != 0 {
+		if hello.supportedVersions[0] == VersionTLS13 {
+			/*if hasAESGCMHardwareSupport {
+				hello.cipherSuites = append(hello.cipherSuites, configCipherSuites...)
+			} else if !hasAESGCMHardwareSupport {
+				// Forcing the client to use CHACHA20 if hardware acceleration is disabled
+				// even if the user chooses a cipher suite that uses
+				hello.cipherSuites = append(hello.cipherSuites,  TLS_CHACHA20_POLY1305_SHA256)
+			}*/
+			hello.cipherSuites = append(hello.cipherSuites, configCipherSuites...)
 		}
-		key, err = generateECDHEKey(config.rand(), curveID)
-		if err != nil {
-			return nil, nil, err
-		}
-		hello.keyShares = []keyShare{{group: curveID, data: key.PublicKey().Bytes()}}
 	}
+
+	curveID := config.curvePreferences()[0]
+	if _, ok := curveForCurveID(curveID); !ok {
+		return nil, nil, errors.New("tls: CurvePreferences includes unsupported curve")
+	}
+	key, err = generateECDHEKey(config.rand(), curveID)
+	if err != nil {
+		return nil, nil, err
+	}
+	hello.keyShares = []keyShare{{group: curveID, data: key.PublicKey().Bytes()}}
 
 	if hello.supportedVersions[0] == VersionTLS13 && c.extraConfig != nil && c.extraConfig.GetExtensions != nil {
 		hello.additionalExtensions = c.extraConfig.GetExtensions(typeClientHello)
