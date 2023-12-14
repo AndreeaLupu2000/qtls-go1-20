@@ -162,6 +162,7 @@ func newQUICConn(conn *Conn, extraConfig *ExtraConfig) *QUICConn {
 	return &QUICConn{
 		conn: conn,
 	}
+
 }
 
 // Start starts the client or server handshake protocol.
@@ -176,7 +177,9 @@ func (q *QUICConn) Start(ctx context.Context) error {
 	if q.conn.config.MinVersion < VersionTLS13 {
 		return quicError(errors.New("tls: Config MinVersion must be at least TLS 1.13"))
 	}
+
 	go q.conn.HandshakeContext(ctx)
+
 	if _, ok := <-q.conn.quic.blockedc; !ok {
 		return q.conn.handshakeErr
 	}
@@ -330,6 +333,7 @@ func (c *Conn) quicSetWriteSecret(level QUICEncryptionLevel, suite uint16, secre
 		Suite: suite,
 		Data:  secret,
 	})
+
 }
 
 func (c *Conn) quicWriteCryptoData(level QUICEncryptionLevel, data []byte) {

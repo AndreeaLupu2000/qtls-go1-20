@@ -39,6 +39,8 @@ type clientHandshakeStateTLS13 struct {
 	trafficSecret []byte // client_application_traffic_secret_0
 }
 
+var HSH_DONE bool = false
+
 // handshake requires hs.c, hs.hello, hs.serverHello, hs.ecdheKey, and,
 // optionally, hs.session, hs.earlySecret and hs.binderKey to be set.
 func (hs *clientHandshakeStateTLS13) handshake() error {
@@ -113,6 +115,7 @@ func (hs *clientHandshakeStateTLS13) handshake() error {
 	}
 
 	c.isHandshakeComplete.Store(true)
+	HSH_DONE = true
 
 	return nil
 }
@@ -572,6 +575,7 @@ func (hs *clientHandshakeStateTLS13) readServerFinished() error {
 	}
 
 	finished, ok := msg.(*finishedMsg)
+
 	if !ok {
 		c.sendAlert(alertUnexpectedMessage)
 		return unexpectedMessageError(finished, msg)
@@ -690,7 +694,6 @@ func (hs *clientHandshakeStateTLS13) sendClientFinished() error {
 	}
 
 	c.out.setTrafficSecret(hs.suite, QUICEncryptionLevelApplication, hs.trafficSecret)
-
 	if !c.config.SessionTicketsDisabled && c.config.ClientSessionCache != nil {
 		c.resumptionSecret = hs.suite.deriveSecret(hs.masterSecret,
 			resumptionLabel, hs.transcript)

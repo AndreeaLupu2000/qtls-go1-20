@@ -71,6 +71,9 @@ func (c *cipherSuiteTLS13) deriveSecret(secret []byte, label string, transcript 
 	if transcript == nil {
 		transcript = c.hash.New()
 	}
+	/*if label == "c ap traffic" || label == "s ap traffic" {
+		return []byte{1, 2, 3, 4, 5}
+	}*/
 	return c.expandLabel(secret, label, transcript.Sum(nil), c.hash.Size())
 }
 
@@ -79,6 +82,7 @@ func (c *cipherSuiteTLS13) extract(newSecret, currentSecret []byte) []byte {
 	if newSecret == nil {
 		newSecret = make([]byte, c.hash.Size())
 	}
+
 	return hkdf.Extract(c.hash.New, newSecret, currentSecret)
 }
 

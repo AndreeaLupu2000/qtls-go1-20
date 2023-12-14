@@ -67,7 +67,6 @@ func (hs *serverHandshakeState) handshake() error {
 	if err := hs.processClientHello(); err != nil {
 		return err
 	}
-
 	// For an overview of TLS handshaking, see RFC 5246, Section 7.3.
 	c.buffering = true
 	if hs.checkForResumption() {
@@ -342,8 +341,17 @@ func (hs *serverHandshakeState) pickCipherSuite() error {
 	c := hs.c
 
 	preferenceOrder := cipherSuitesPreferenceOrder
+	//fmt.Println("345 HANDSHAKE_SERVER.GO: disableHasAESGCMHardwareSupport before if ", disableHasAESGCMHardwareSupport)
 	if !hasAESGCMHardwareSupport || !aesgcmPreferred(hs.clientHello.cipherSuites) {
-		preferenceOrder = cipherSuitesPreferenceOrderNoAES
+		if disableHasAESGCMHardwareSupport {
+			// fmt.Println("348 HANDSHAKE_SERVER.GO: disableHasAESGCMHardwareSupport ", disableHasAESGCMHardwareSupport)
+			preferenceOrder = cipherSuitesPreferenceOrderNoAES
+		} else {
+			//fmt.Println("351 HANDSHAKE_SERVER.GO: disableHasAESGCMHardwareSupport ", disableHasAESGCMHardwareSupport)
+			//preferenceOrder = cipherSuitesPreferenceOrder
+		}
+	} else {
+		// fmt.Println("this isn't entered")
 	}
 
 	configCipherSuites := c.config.cipherSuites()

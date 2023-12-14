@@ -1227,7 +1227,6 @@ func (c *Conn) Write(b []byte) (int, error) {
 			m, b = 1, b[1:]
 		}
 	}
-
 	n, err := c.writeRecordLocked(recordTypeApplicationData, b)
 	return n + m, c.out.setErrorLocked(err)
 }
